@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,8 +19,8 @@ import (
 	"github.com/hashicorp/go-azure-helpers/resourcemanager/tags"
 	"github.com/hashicorp/go-azure-helpers/resourcemanager/zones"
 	"github.com/hashicorp/go-azure-sdk/resource-manager/network/2023-09-01/ddosprotectionplans"
-	"github.com/hashicorp/go-azure-sdk/resource-manager/network/2023-11-01/publicipprefixes"
 	"github.com/hashicorp/go-azure-sdk/resource-manager/network/2024-05-01/publicipaddresses"
+	"github.com/hashicorp/go-azure-sdk/resource-manager/network/2024-05-01/publicipprefixes"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-provider-azurerm/helpers/tf"
 	"github.com/hashicorp/terraform-provider-azurerm/internal/clients"
@@ -188,6 +189,8 @@ func resourcePublicIp() *pluginsdk.Resource {
 }
 
 func resourcePublicIpCreate(d *pluginsdk.ResourceData, meta interface{}) error {
+	prefixClient := meta.(*clients.Client).Network.Client.PublicIPPrefixes
+
 	client := meta.(*clients.Client).Network.PublicIPAddresses
 	subscriptionId := meta.(*clients.Client).Account.SubscriptionId
 	ctx, cancel := timeouts.ForCreate(meta.(*clients.Client).StopContext, d)
@@ -248,9 +251,9 @@ func resourcePublicIpCreate(d *pluginsdk.ResourceData, meta interface{}) error {
 		}
 	}
 
-	zones := zones.ExpandUntyped(d.Get("zones").(*schema.Set).List())
-	if len(zones) > 0 {
-		publicIp.Zones = &zones
+	publicIpZones := zones.ExpandUntyped(d.Get("zones").(*schema.Set).List())
+	if len(publicIpZones) > 0 {
+		publicIp.Zones = &publicIpZones
 	}
 
 	publicIpPrefixId, publicIpPrefixIdOk := d.GetOk("public_ip_prefix_id")
@@ -259,6 +262,29 @@ func resourcePublicIpCreate(d *pluginsdk.ResourceData, meta interface{}) error {
 		publicIpPrefix := publicipaddresses.SubResource{}
 		publicIpPrefix.Id = pointer.To(publicIpPrefixId.(string))
 		publicIp.Properties.PublicIPPrefix = &publicIpPrefix
+
+		publicIpPrefixIDResource, err := publicipprefixes.ParsePublicIPPrefixID(publicIpPrefixId.(string))
+		if err != nil {
+			return fmt.Errorf("parsing public ip prefix id: %+v", err)
+		}
+
+		publicIpPrefixResource, err := prefixClient.Get(ctx, *publicIpPrefixIDResource, publicipprefixes.DefaultGetOperationOptions())
+		if err != nil {
+			return fmt.Errorf("retrieving %s: %+v", publicIpPrefixId, err)
+		}
+
+		publicIpPrefixZones := zones.Flatten(publicIpPrefixResource.Model.Zones)
+		slices.Sort(publicIpPrefixZones)
+		slices.Sort(publicIpZones)
+
+		equal := slices.Equal(publicIpPrefixZones, publicIpZones)
+
+		slices.Compare()
+
+
+		if publicIpPrefixResource.Model.Zones != nil  &&
+
+
 	}
 
 	dnl, dnlOk := d.GetOk("domain_name_label")
